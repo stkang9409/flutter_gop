@@ -12,13 +12,17 @@ flutter:
     platforms:
       android:
         package: com.example.flutter_gop
-        pluginClass: PronunciationEvaluatorPlugin
+        pluginClass: FlutterGop
       ios:
-        pluginClass: SwiftPronunciationEvaluatorPlugin
+        pluginClass: SwiftFlutterGop
+  assets:
+    - assets/
 
 dependencies:
   flutter:
     sdk: flutter
+  flutter_plugin_speechsuper: ^1.0.20
+  logging: ^1.3.0
   plugin_platform_interface: ^2.1.8
 
 dev_dependencies:
