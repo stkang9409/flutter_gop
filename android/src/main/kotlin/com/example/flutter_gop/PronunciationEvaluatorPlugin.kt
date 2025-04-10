@@ -1,4 +1,4 @@
-package com.example.pronunciation_evaluator
+package com.example.flutter_gop
 
 import android.media.AudioFormat
 import android.media.AudioRecord

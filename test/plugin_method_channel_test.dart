@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plugin/services/pronunciation_evaluator.dart';
+import 'package:flutter_gop/flutter_gop.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

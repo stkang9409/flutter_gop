@@ -1,4 +1,4 @@
-name: plugin
+name: flutter_gop
 description: A Flutter plugin for real-time pronunciation evaluation using Wav2Vec2 models.
 version: 0.0.1
 homepage: https://github.com/yourusername/pronunciation_evaluator
@@ -11,7 +11,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.example.pronunciation_evaluator
+        package: com.example.flutter_gop
         pluginClass: PronunciationEvaluatorPlugin
       ios:
         pluginClass: SwiftPronunciationEvaluatorPlugin

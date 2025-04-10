@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 
-import 'package:plugin/pronunciation_evaluator.dart';
+import 'package:flutter_gop/flutter_gop.dart';
 
 void main() {
   runApp(const MyApp());
