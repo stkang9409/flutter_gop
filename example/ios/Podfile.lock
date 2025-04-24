@@ -42,7 +42,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
-  flutter_gop: d9015c7764087724705f1c42df768189372c030d
+  flutter_gop: 1e2de92d39d5e7a4a328cbf5d8f65aae2a5a6cbb
   flutter_plugin_speechsuper: e2aeb37c62e76db16ab01b4a87a3663f016741d4
   integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
   onnxruntime-c: ebdcfd8650bcbd10121c125262f99dea681b92a3

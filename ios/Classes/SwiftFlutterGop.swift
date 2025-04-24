@@ -5,9 +5,12 @@ import AVFoundation
 public class SwiftFlutterGop: NSObject, FlutterPlugin, FlutterStreamHandler {
   private var eventSink: FlutterEventSink?
   private var audioEngine: AVAudioEngine?
+  private var audioRecorder: AVAudioRecorder?
   private var isRecording = false
   private var currentText: String?
   private var currentLanguage: String?
+  private var engineWrapper: FlutterGopWrapper?
+  private var tempAudioFilePath: URL?
   
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "flutter_gop", binaryMessenger: registrar.messenger())
@@ -25,7 +28,7 @@ public class SwiftFlutterGop: NSObject, FlutterPlugin, FlutterStreamHandler {
             let text = args["text"] as? String,
             let language = args["language"] as? String else {
         result(FlutterError(code: "INVALID_ARGUMENTS",
-                          message: "Text and language must be provided",
+                          message: "텍스트와 언어를 제공해야 합니다",
                           details: nil))
         return
       }
@@ -37,16 +40,97 @@ public class SwiftFlutterGop: NSObject, FlutterPlugin, FlutterStreamHandler {
     }
   }
   
+  private func getModelFilePath() -> (modelPath: String?, tokenizerPath: String?) {
+    let bundle = Bundle(for: SwiftFlutterGop.self)
+    
+    // 리소스 번들 가져오기
+    guard let resourceBundleURL = bundle.url(forResource: "flutter_gop_models", withExtension: "bundle"),
+          let resourceBundle = Bundle(url: resourceBundleURL) else {
+      return (nil, nil)
+    }
+    
+    let modelPath = resourceBundle.path(forResource: "wav2vec2_ctc_dynamic", ofType: "onnx")
+    let tokenizerPath = resourceBundle.path(forResource: "tokenizer", ofType: "json")
+    
+    return (modelPath, tokenizerPath)
+  }
+  
   private func startEvaluation(text: String, language: String, result: @escaping FlutterResult) {
     if isRecording {
       result(FlutterError(code: "ALREADY_RECORDING",
-                        message: "Evaluation is already in progress",
+                        message: "이미 평가가 진행 중입니다",
                         details: nil))
       return
     }
     
     currentText = text
     currentLanguage = language
+    
+    // 모델 파일 경로 가져오기
+    let modelPaths = getModelFilePath()
+    guard let modelPath = modelPaths.modelPath,
+          let tokenizerPath = modelPaths.tokenizerPath else {
+      result(FlutterError(code: "MODEL_NOT_FOUND",
+                          message: "모델 또는 토크나이저를 찾을 수 없습니다",
+                          details: nil))
+      return
+    }
+    
+    // 임시 오디오 파일 경로 설정
+    let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    tempAudioFilePath = documentsDirectory.appendingPathComponent("temp_recording.wav")
+    
+    // 엔진 초기화
+    engineWrapper = FlutterGopWrapper(
+      modelPath: modelPath,
+      tokenizerPath: tokenizerPath,
+      device: "CPU",
+      updateInterval: 0.5,
+      confidenceThreshold: 0.6
+    )
+    
+    // 콜백 설정
+    engineWrapper?.setCallbacks(
+      { [weak self] in
+        DispatchQueue.main.async {
+          self?.eventSink?(["status": "started"])
+        }
+      },
+      onTick: { [weak self] current, total in
+        DispatchQueue.main.async {
+          self?.eventSink?(["status": "processing", "progress": Float(current) / Float(total)])
+        }
+      },
+      onFail: { [weak self] message in
+        DispatchQueue.main.async {
+          self?.eventSink?(["status": "error", "message": message])
+        }
+      },
+      onEnd: { [weak self] in
+        DispatchQueue.main.async {
+          self?.eventSink?(["status": "completed"])
+        }
+      },
+      onScore: { [weak self] scoreJson in
+        DispatchQueue.main.async {
+          self?.eventSink?(["status": "result", "data": scoreJson])
+        }
+      }
+    )
+    
+    // 엔진 초기화
+    let success = engineWrapper?.initialize(
+      withSentence: text,
+      audioPollingInterval: 0.1,
+      minTimeBetweenEvals: 1.0
+    ) ?? false
+    
+    if !success {
+      result(FlutterError(code: "ENGINE_INIT_FAILED",
+                          message: "엔진 초기화에 실패했습니다",
+                          details: nil))
+      return
+    }
     
     // 오디오 세션 설정
     let audioSession = AVAudioSession.sharedInstance()
@@ -55,74 +139,62 @@ public class SwiftFlutterGop: NSObject, FlutterPlugin, FlutterStreamHandler {
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       result(FlutterError(code: "AUDIO_SESSION_ERROR",
-                        message: "Failed to set up audio session",
+                        message: "오디오 세션 설정에 실패했습니다",
                         details: error.localizedDescription))
       return
     }
     
-    // 오디오 엔진 설정
-    audioEngine = AVAudioEngine()
-    let inputNode = audioEngine?.inputNode
-    let inputFormat = inputNode?.outputFormat(forBus: 0)
-    let sampleRate = inputFormat?.sampleRate ?? 16000
-    
-    // 버퍼 크기 설정 (1초 분량)
-    let bufferSize = AVAudioFrameCount(sampleRate)
-    
-    inputNode?.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, time in
-      guard let self = self, self.isRecording else { return }
-      
-      // 오디오 데이터를 float 배열로 변환
-      let channelData = buffer.floatChannelData?[0]
-      let frameLength = Int(buffer.frameLength)
-      
-      if let channelData = channelData {
-        // 여기에 ONNX Runtime으로 모델 추론 코드 추가
-        // 임시로 더미 결과 생성
-        let dummyResult: [String: Any] = [
-          "sentence": [
-            "text": self.currentText ?? "",
-            "score": 85
-          ],
-          "words": [
-            [
-              "text": "Hello",
-              "score": 90
-            ],
-            [
-              "text": "world",
-              "score": 80
-            ]
-          ]
-        ]
-        
-        DispatchQueue.main.async {
-          self.eventSink?(dummyResult)
-        }
-      }
-    }
+    // 오디오 녹음 설정
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatLinearPCM),
+      AVSampleRateKey: 16000.0,
+      AVNumberOfChannelsKey: 1,
+      AVLinearPCMBitDepthKey: 16,
+      AVLinearPCMIsFloatKey: false,
+      AVLinearPCMIsBigEndianKey: false
+    ]
     
     do {
-      try audioEngine?.start()
+      audioRecorder = try AVAudioRecorder(url: tempAudioFilePath!, settings: settings)
+      audioRecorder?.record()
       isRecording = true
+      
+      // 실시간 평가 시작
+      engineWrapper?.startEvaluation(withAudioFilePath: tempAudioFilePath!.path)
+      
       result(nil)
     } catch {
-      result(FlutterError(code: "AUDIO_ENGINE_ERROR",
-                        message: "Failed to start audio engine",
+      result(FlutterError(code: "RECORDER_ERROR",
+                        message: "오디오 녹음 설정에 실패했습니다",
                         details: error.localizedDescription))
     }
   }
   
   private func stopEvaluation(result: @escaping FlutterResult) {
     isRecording = false
-    audioEngine?.stop()
-    audioEngine?.inputNode.removeTap(onBus: 0)
-    audioEngine = nil
+    
+    audioRecorder?.stop()
+    audioRecorder = nil
+    
+    engineWrapper?.stopEvaluation()
+    
+    // 최종 결과 획득
+    if let finalResults = engineWrapper?.getResults() {
+      eventSink?(["status": "final_result", "data": finalResults])
+    }
+    
+    engineWrapper?.reset()
     
     do {
       try AVAudioSession.sharedInstance().setActive(false)
     } catch {
-      print("Failed to deactivate audio session: \(error)")
+      print("오디오 세션 비활성화에 실패했습니다: \(error)")
+    }
+    
+    // 임시 파일 정리
+    if let path = tempAudioFilePath {
+      try? FileManager.default.removeItem(at: path)
+      tempAudioFilePath = nil
     }
     
     result(nil)

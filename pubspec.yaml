@@ -16,7 +16,8 @@ flutter:
       ios:
         pluginClass: SwiftFlutterGop
   assets:
-    - assets/
+    - assets/wav2vec2_ctc_dynamic.onnx
+    - assets/tokenizer.json
 
 dependencies:
   flutter:
